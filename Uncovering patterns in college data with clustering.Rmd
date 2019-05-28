@@ -1,0 +1,187 @@
+---
+title: "Uncovering patterns in college data with clustering"
+output:
+  word_document: default
+  html_document: default
+---
+##This is a study journal for unsupervised learning: Clustering
+
+The goal of cluster analysis, or segmentation, is to group observations so that observations within the same grouping, or clusterm, are more closely related than observations in different clusters. An essential component of clustering techniques is a measure of distance/similarities between observations. It uses Euclidean distance and pythagorean theorem to do the calculation 
+
+I will explore college scorecard dataset with two kind of clustering techniques
+1. K-means clustering
+2. Hierarchical clustering
+
+##About the data
+The US News and World Report’s college ranking system was launched in 1983 with the purpose of comparing and scoring colleges based on metrics like acceptance rate and student SAT scores. Since that time, the limitations of this ranking system have become apparent to many. President Obama argued that the rankings do not actually reflect stu- dent preferences, and more importantly labor market outcomes after graduation. He also noted that such scoring systems encourage col- leges and universities to game their metrics. Sometimes the gaming comes in the form of making costly investments in facilities that sub- stantially increase the costs of college, while having little to no effect on the quality of the education they provide. Sometimes the gaming is all out cheating, includ- ing lying about SAT scores, and fudging acceptance, retention and graduation rates.
+According to President Obama, “Everyone should be able to find clear, reliable, open data on college affordability and value—like whether they’re likely to graduate, find good jobs, and pay off their loans.” Beyond prospective students, colleges and universities often don’t have essential data to investigate how well they are preparing their students for success in the job market. The College Scorecard dataset was released by the Obama administration to address both of these concerns.
+
+```{r setup, include=FALSE}
+# setup
+library(tidyverse)
+library(GGally)
+library(stringr)
+library(ggdendro)
+
+# read the college scorecard dataset
+setwd("/Users/hanrui/Desktop/Data Analyst/UW Data Analytics Certificate/Data Mining and Predictive Analytics/datasets")
+colleges = read.delim("colleges.tsv", sep = "\t", header = TRUE)
+
+```
+
+Scenario:
+A granting agency wants to identify colleges that have high numbers of low-income, and first generation college attendees to give those colleges additional funding.
+
+
+b. What is the median family income for each cluster (hint: see kmeans_cluster$centers from the tutorial)?
+Median family income:
+cluster 1: 19231.73
+cluster 2: 40221.74
+cluster 3: 75559.67
+
+c. Subset the colleges_features dataset on the cluster with the lowest family_income_median, call this new data grant_candidates. Note: in the tutorial, grant_candidates were from Cluster 1, you could find that a different cluster from your analysis has the lowest family_income_median when you look at kmeans_cluster$centers.
+
+d. How many universities are in the cluster of grant receivers?
+ There are 1410 universities 
+```{r}
+###########
+# k-means clustering
+# start by initialize k means: determine how many clusters you want 
+# two steps:
+# 1. cluster assignment: assign all observations to one of the centroids
+# 2. move centroids: move centroids to the middle of the cluster when centroids stop moving
+###########
+
+college_features = colleges %>% select(institution_name, first_gen_share, poverty_rate, family_income_median, 
+                                       median_earnings, top_ten) %>% na.omit() %>% distinct()
+
+# run k-means clustering, k = 3
+kmeans_cluster = kmeans(select(college_features, -institution_name, top_ten), 3)
+
+# check what attributes are in the kmeans
+attributes(kmeans_cluster)
+
+# find which cluster the observations belong to 
+head(kmeans_cluster$cluster)
+
+# check out the centers
+kmeans_cluster$centers
+
+# append the cluster assignment onto the dataset
+college_features = college_features %>% mutate(cluster = kmeans_cluster$cluster)
+
+ggplot(college_features, aes(x = family_income_median, y = median_earnings, 
+                             color = factor(cluster))) +
+                             geom_point(alpha = 0.5) + theme_minimal()
+```
+
+```{r}
+# Subset the colleges_features dataset on the cluster with the lowest family_income_median
+grant_candidates = college_features %>% filter (cluster == 2)
+
+# count the number of universities in cluster 2
+nrow(grant_candidates)
+```
+
+2. Upon review you’re informed that there are too many universities receiving grants. The granting agency really likes the cluster approach but suggests you make 5 clusters instead of 3.
+
+
+b. Again subset the data on the cluster with the lowest family_income_median. How many universities will receive a grant now? What is the median and range of family_income_median of these universities and how does it compare to your answers in Question 1?
+Median family income:
+cluster 1: 82779.12
+cluster 2: 14966.27
+cluster 3: 17116.77
+cluster 4: 55215.77
+cluster 5: 31534.88
+
+In this case, if we choose the cluster with the lowest median family income (cluster 2), there will be only 26 universities 
+as grant candidates
+
+c. You will likely find that there were two clusters out of the five with low but similar family_income_median. Among these two clusters, what else determined which cluster these universities were assigned to (hint: look at the centers again)? Based on those other variables, do you think we made the correct decision to distribute grants considering only family_income_median
+
+We should consider family_income_median, median_earnings, the sample size of each cluster, and the distribution plot when determining grant candidates
+
+I noticed that cluster 2 and 3 have similar family median incomes (both are pretty low). As we look at the cluster distribution plot, cluster 2 has the highest median earnings and a very scattered distribution pattern. It look like outliners to me and should be removed from our analysis. 
+
+```{r}
+# run k-means clustering, k = 5
+# remove previous cluster when k = 2
+kmeans_cluster1 = kmeans(select(college_features, -institution_name, -cluster, top_ten), 5)
+
+# check what attributes are in the kmeans
+attributes(kmeans_cluster1)
+
+# find which cluster the observations belong to 
+head(kmeans_cluster1$cluster)
+
+# check out the centers
+kmeans_cluster1$centers
+
+# append the cluster assignment onto the dataset
+college_features = college_features %>% mutate(cluster = kmeans_cluster1$cluster)
+
+ggplot(college_features, aes(x = family_income_median, y = median_earnings, 
+                             color = factor(cluster))) +
+                             geom_point(alpha = 0.5) + theme_minimal()
+```
+
+```{r}
+# Subset the colleges_features dataset on the cluster with the lowest family_income_median
+grant_candidates = college_features %>% filter (cluster == 2)
+
+# count the number of universities in cluster 2
+nrow(grant_candidates)
+```
+
+Hierarchical clustering: Part of the grant is to reformulate curriculums to better match top ten universities. 
+
+```{r}
+# subset college datasets to remove universities that do not have SAT admission criteria and 
+# with similar degree-granting univerisities
+grant_colleges = colleges %>% filter((is.na(sat_verbal_quartile_1) & family_income_median < 40000 &
+                                      median_earnings < 30000 &
+                                      pred_deg == "Predominantly bachelor's-degree granting"))
+
+top_ten_schools = colleges %>% filter(top_ten == TRUE)
+heir_analysis_data = rbind(grant_colleges, top_ten_schools)
+
+# select all the columns that contain the string "_major_perc"
+major_perc = heir_analysis_data %>% select(institution_name, top_ten, 
+                                           str_which(names(heir_analysis_data), "_major_perc")) %>%
+                                           na.omit()
+
+# compute the euclidean distance
+euclidean = dist(select(major_perc, -institution_name, -top_ten), method = "euclidean")
+
+# hierarchical clustering
+hier = hclust(euclidean)
+
+# labels are ids
+hier$labels
+
+# replace labels with institution name
+hier$labels = major_perc$institution_name
+
+# plot dendrogram
+ggdendrogram(hier, rotate = TRUE, size = 2)
+
+# extract the dendrogram data
+dendro_data = dendro_data(hier)
+
+dendro_data$labels = unique(merge(dendro_data$labels, select(college_features, institution_name,
+        top_ten), by.x = "label", by.y = "institution_name",
+    all.x = TRUE)) # we can see from the dendrogram that Gods Bible school and College is the most different from top-ten schools in terms of major
+
+ggplot(segment(dendro_data)) + geom_segment(aes(x = x,
+y = y, xend = xend, yend = yend)) + geom_text(data = label(dendro_data), aes(label = label, x = x, y = 0, hjust = 0,
+color = top_ten), size = 2) + coord_flip() + scale_y_reverse(expand = c(0.25, 0)) + theme_minimal() + theme(legend.position = "bottom")
+
+# visualize the resulting clusters
+ggpairs(college_features, lower = list(mapping = aes(color = cluster,
+alpha = 0.2)), diag = list(mapping = aes(fill = cluster,
+color = cluster, alpha = 0.5)), upper = list(mapping = aes(group = cluster)), columns = c("first_gen_share", "poverty_rate",
+        "family_income_median", "median_earnings"))
+
+```
+
+        
